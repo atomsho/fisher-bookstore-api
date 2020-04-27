@@ -13,7 +13,10 @@ using Microsoft.Extensions.Logging;
 using Fisher.Bookstore.Services;
 using Microsoft.EntityFrameworkCore;
 using Fisher.Bookstore.Data;
-
+using System.Security.Claims;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Fisher.Bookstore
 {
@@ -38,7 +41,31 @@ namespace Fisher.Bookstore
             services.AddScoped<IBooksRepository, BooksRepository>();
             services.AddScoped<IAuthorsRepository, AuthorsRepository>();
 
-        }
+            string domain = $"https://{Configuration["Auth0:Domain"]}/";
+            services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                }).AddJwtBearer(options =>
+                {
+                    options.Authority = domain;
+                    options.Audience = Configuration["Auth0:ApiIdentifier"];
+                    options.TokenValidationParameters = new TokenValidationParameters 
+                    { NameClaimType = ClaimTypes.NameIdentifier};
+
+
+                });
+
+                services.AddAuthorization(options =>
+                {
+                    options.AddPolicy("read:messages", policy => policy.Requirements.Add(new HasScopeRequirement("read:messages", domain)));
+                    
+                });
+
+                services.AddSingleton<IAuthorizationHandler, HasScopeHandler>();
+
+             }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -57,7 +84,8 @@ namespace Fisher.Bookstore
                 .AllowAnyMethod());
 
             app.UseAuthorization();
-
+            app.UseAuthentication();
+            
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
